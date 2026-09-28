@@ -1,0 +1,143 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, serif;
+
+  --color-bg: #101418;
+  --color-surface: #1a2128;
+  --color-surface-2: #24303a;
+  --color-fg: #f3f1ec;
+  --color-muted: #9aa3ad;
+  --color-subtle: #6e7882;
+  --color-border: #2e3944;
+  --color-accent: #f3f1ec;
+  --color-accent-fg: #14181d;
+  --color-sky: #4ba3d9;
+  --color-good: #2f8f6b;
+  --color-miss: #c45c4a;
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+}
+
+:root {
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-quick: 150ms;
+  --motion-fast: 250ms;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    overscroll-behavior: none;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:focus-visible {
+    outline: 2px solid var(--color-sky);
+    outline-offset: 2px;
+  }
+
+  h1,
+  h2 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+}
+
+.press {
+  transition:
+    transform var(--motion-quick) var(--ease-smooth-out),
+    background-color var(--motion-quick) var(--ease-smooth-out),
+    opacity var(--motion-quick) var(--ease-smooth-out);
+}
+
+.press:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.scrim {
+  background: color-mix(in oklab, var(--color-bg) 62%, transparent);
+}
+
+.overlay-panel {
+  animation: panel-in var(--motion-fast) var(--ease-smooth-out);
+}
+
+.stat-value[data-urgent="true"] {
+  color: var(--color-miss);
+  animation: time-pulse 1s ease-in-out infinite;
+}
+
+.bump {
+  animation: bump-in var(--motion-quick) var(--ease-smooth-out);
+}
+
+.playfield-wrap {
+  background: #8ecaf2;
+  touch-action: none;
+  user-select: none;
+  margin-bottom: env(safe-area-inset-bottom);
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes time-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes bump-in {
+  from {
+    transform: translateY(4px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay-panel,
+  .stat-value[data-urgent="true"],
+  .bump {
+    animation: none;
+  }
+
+  .press {
+    transition: none;
+  }
+}

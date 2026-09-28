@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Sky Collector">
+  <rect width="32" height="32" rx="8" fill="#101418"/>
+  <path fill="#F2B84B" d="M16 3.2 20.8 9.8 16 16.4 11.2 9.8Z"/>
+  <path fill="#F3F1EC" d="M5 18.6h22L24.2 29H7.8Z"/>
+  <rect x="4" y="16.2" width="24" height="3.4" rx="1.5" fill="#4BA3D9"/>
+</svg>

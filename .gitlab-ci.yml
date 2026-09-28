@@ -1,0 +1,37 @@
+# Builds Sky Collector and publishes the static site to GitLab Pages
+# on the default branch. Merge requests only build.
+
+image: node:22
+
+stages:
+  - build
+  - pages
+
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - node_modules/
+
+build:
+  stage: build
+  script:
+    - npm install
+    - npm run build
+  artifacts:
+    paths:
+      - dist
+    expire_in: 1 week
+
+pages:
+  stage: pages
+  needs:
+    - job: build
+      artifacts: true
+  script:
+    - rm -rf public
+    - cp -a dist public
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
