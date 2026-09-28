@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Sky Collector</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #071426; }
+  body {
+    font-family: "Segoe UI", system-ui, sans-serif;
+    display: grid;
+    place-items: center;
+    min-height: 100%;
+  }
+  #wrap {
+    position: relative;
+    width: min(480px, 100vw);
+    height: min(820px, 100dvh);
+    overflow: hidden;
+    background: #071426;
+    touch-action: none;
+    user-select: none;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  .hud {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    right: 14px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    color: #f4fbff;
+    text-shadow: 0 2px 8px rgba(0,0,0,.45);
+    pointer-events: none;
+    font-weight: 700;
+    letter-spacing: .02em;
+  }
+  .hud b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .hud span { font-size: 11px; font-weight: 600; opacity: .75; letter-spacing: .14em; text-transform: uppercase; }
+  .panel {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: linear-gradient(180deg, rgba(7,20,38,.2), rgba(7,20,38,.55));
+  }
+  .card {
+    width: min(360px, 100%);
+    padding: 28px 24px 22px;
+    border-radius: 22px;
+    background: rgba(10, 24, 48, .82);
+    border: 1px solid rgba(255,255,255,.14);
+    box-shadow: 0 20px 60px rgba(0,0,0,.35);
+    color: #f7fbff;
+    text-align: center;
+    backdrop-filter: blur(10px);
+  }
+  h1 { margin: 0 0 8px; font-size: 34px; letter-spacing: -.03em; }
+  p { margin: 0 0 18px; color: #c9d7ea; line-height: 1.45; }
+  button {
+    appearance: none;
+    border: 0;
+    border-radius: 999px;
+    padding: 12px 22px;
+    font: inherit;
+    font-weight: 750;
+    color: #082033;
+    background: linear-gradient(180deg, #ffe27a, #f5b942);
+    cursor: pointer;
+  }
+  button:active { transform: translateY(1px); }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+  <div class="hud">
+    <div><span>Score</span><b id="score">0</b></div>
+    <div style="text-align:center"><span>Time</span><b id="time">60</b></div>
+    <div style="text-align:right"><span>Best</span><b id="best">0</b></div>
+  </div>
+  <div class="panel" id="start">
+    <div class="card">
+      <h1>Sky Collector</h1>
+      <p>One minute. Catch the falling shapes with your basket. Move with arrows, A/D, or by dragging and tapping.</p>
+      <button id="play" type="button">Start</button>
+    </div>
+  </div>
+  <div class="panel hidden" id="over">
+    <div class="card">
+      <h1>Time</h1>
+      <p id="final">You caught enough sky for a score of 0.</p>
+      <button id="again" type="button">Play again</button>
+    </div>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const scoreEl = document.getElementById("score");
+const timeEl = document.getElementById("time");
+const bestEl = document.getElementById("best");
+const startEl = document.getElementById("start");
+const overEl = document.getElementById("over");
+const finalEl = document.getElementById("final");
+const BEST_KEY = "sky-collector-best";
+
+let W = 480, H = 820, dpr = 1;
+let basketX = 240;
+let targetX = 240;
+let keys = { left: false, right: false };
+let running = false;
+let score = 0;
+let timeLeft = 60;
+let last = 0;
+let spawn = 0;
+let shapes = [];
+let pops = [];
+let clouds = [];
+let best = Number(localStorage.getItem(BEST_KEY) || 0);
+bestEl.textContent = String(best);
+
+const TYPES = [
+  { name: "orb", points: 10, color: "#7ad7ff" },
+  { name: "box", points: 15, color: "#ffd36a" },
+  { name: "gem", points: 25, color: "#d7a6ff" },
+  { name: "star", points: 40, color: "#fff4b0" }
+];
+
+function resize() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = rect.width;
+  H = rect.height;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  basketX = Math.min(Math.max(basketX, 50), W - 50);
+  targetX = basketX;
+}
+
+function resetClouds() {
+  clouds = Array.from({ length: 6 }, (_, i) => ({
+    x: Math.random() * W,
+    y: 40 + Math.random() * H * 0.45,
+    r: 28 + Math.random() * 36,
+    s: 8 + Math.random() * 16
+  }));
+}
+
+function spawnShape() {
+  const type = TYPES[Math.floor(Math.random() * TYPES.length)];
+  const size = 16 + Math.random() * 16;
+  shapes.push({
+    type,
+    x: 24 + Math.random() * (W - 48),
+    y: -30,
+    size,
+    vy: 90 + Math.random() * 150 + score * 0.15,
+    spin: (Math.random() - 0.5) * 3,
+    rot: Math.random() * Math.PI
+  });
+}
+
+function startGame() {
+  score = 0;
+  timeLeft = 60;
+  shapes = [];
+  pops = [];
+  spawn = 0;
+  running = true;
+  scoreEl.textContent = "0";
+  timeEl.textContent = "60";
+  startEl.classList.add("hidden");
+  overEl.classList.add("hidden");
+  last = performance.now();
+  requestAnimationFrame(frame);
+}
+
+function endGame() {
+  running = false;
+  if (score > best) {
+    best = score;
+    localStorage.setItem(BEST_KEY, String(best));
+    bestEl.textContent = String(best);
+  }
+  finalEl.textContent = "You scored " + score + (score >= best && score > 0 ? ". New best." : ".");
+  overEl.classList.remove("hidden");
+}
+
+function catchBurst(x, y, color) {
+  for (let i = 0; i < 8; i++) {
+    const a = Math.random() * Math.PI * 2;
+    pops.push({ x, y, vx: Math.cos(a) * 80, vy: Math.sin(a) * 80, life: 0.45, color });
+  }
+}
+
+function drawShape(s) {
+  ctx.save();
+  ctx.translate(s.x, s.y);
+  ctx.rotate(s.rot);
+  ctx.fillStyle = s.type.color;
+  const r = s.size;
+  if (s.type.name === "orb") {
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (s.type.name === "box") {
+    ctx.fillRect(-r, -r, r * 2, r * 2);
+  } else if (s.type.name === "gem") {
+    ctx.beginPath();
+    ctx.moveTo(0, -r);
+    ctx.lineTo(r, 0);
+    ctx.lineTo(0, r);
+    ctx.lineTo(-r, 0);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const rad = i % 2 === 0 ? r : r * 0.45;
+      const a = -Math.PI / 2 + i * Math.PI / 5;
+      ctx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawBasket() {
+  const y = H - 58;
+  const w = 92;
+  ctx.fillStyle = "#f2b34a";
+  ctx.beginPath();
+  ctx.moveTo(basketX - w / 2, y);
+  ctx.lineTo(basketX + w / 2, y);
+  ctx.lineTo(basketX + w / 2 - 10, y + 28);
+  ctx.quadraticCurveTo(basketX, y + 40, basketX - w / 2 + 10, y + 28);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#8a5a16";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+}
+
+function frame(now) {
+  if (!running) return;
+  const dt = Math.min(0.033, (now - last) / 1000);
+  last = now;
+  timeLeft -= dt;
+  if (timeLeft <= 0) {
+    timeLeft = 0;
+    timeEl.textContent = "0";
+    endGame();
+    draw();
+    return;
+  }
+  timeEl.textContent = String(Math.ceil(timeLeft));
+
+  const speed = 420;
+  if (keys.left) targetX -= speed * dt;
+  if (keys.right) targetX += speed * dt;
+  targetX = Math.min(Math.max(targetX, 52), W - 52);
+  basketX += (targetX - basketX) * Math.min(1, dt * 14);
+
+  spawn += dt;
+  const gap = Math.max(0.28, 0.72 - score / 400);
+  if (spawn > gap) {
+    spawn = 0;
+    spawnShape();
+  }
+
+  const by = H - 58;
+  shapes = shapes.filter((s) => {
+    s.y += s.vy * dt;
+    s.rot += s.spin * dt;
+    const caught = s.y > by - 6 && s.y < by + 34 && Math.abs(s.x - basketX) < 52 + s.size * 0.3;
+    if (caught) {
+      score += s.type.points;
+      scoreEl.textContent = String(score);
+      catchBurst(s.x, by, s.type.color);
+      return false;
+    }
+    return s.y < H + 40;
+  });
+
+  pops.forEach((p) => {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+  });
+  pops = pops.filter((p) => p.life > 0);
+
+  clouds.forEach((c) => {
+    c.x += c.s * dt;
+    if (c.x - c.r > W) c.x = -c.r;
+  });
+
+  draw();
+  requestAnimationFrame(frame);
+}
+
+function draw() {
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, "#1b4f93");
+  sky.addColorStop(0.55, "#4aa0e0");
+  sky.addColorStop(1, "#f3c98a");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = "rgba(255,255,255,.55)";
+  clouds.forEach((c) => {
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r * 0.7, 0, Math.PI * 2);
+    ctx.arc(c.x + c.r * 0.6, c.y + 4, c.r * 0.55, 0, Math.PI * 2);
+    ctx.arc(c.x - c.r * 0.55, c.y + 6, c.r * 0.48, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  shapes.forEach(drawShape);
+  pops.forEach((p) => {
+    ctx.globalAlpha = Math.max(0, p.life / 0.45);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+  drawBasket();
+}
+
+function pointerToX(e) {
+  const rect = canvas.getBoundingClientRect();
+  const src = e.touches ? e.touches[0] : e;
+  targetX = ((src.clientX - rect.left) / rect.width) * W;
+}
+
+canvas.addEventListener("pointerdown", pointerToX);
+canvas.addEventListener("pointermove", (e) => {
+  if (e.buttons || e.pointerType === "touch") pointerToX(e);
+});
+window.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") keys.left = true;
+  if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") keys.right = true;
+});
+window.addEventListener("keyup", (e) => {
+  if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") keys.left = false;
+  if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") keys.right = false;
+});
+document.getElementById("play").onclick = startGame;
+document.getElementById("again").onclick = startGame;
+window.addEventListener("resize", () => { resize(); if (!running) { resetClouds(); draw(); } });
+resize();
+resetClouds();
+draw();
+</script>
+</body>
+</html>
